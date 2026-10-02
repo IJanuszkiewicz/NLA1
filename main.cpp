@@ -6,6 +6,7 @@
 #undef conj
 #endif
 #include <Eigen/Dense>
+#include <Eigen/IterativeLinearSolvers>
 #include <Eigen/Sparse>
 #include <algorithm>
 #include <iostream>
@@ -77,17 +78,39 @@ void write_eigen_as_mtx(const Eigen::SparseMatrix<double> &matrix,
 
 void write_eigen_as_mtx(const Eigen::VectorXd &vector,
                         const std::string &path) {
-  saveMarketVector(vector, path);
+  // that was noted in the lab, the matrix mtx format from eigen is not
+  // compatible with LIS, so write file manually. sparse matrix save works as it
+  // is instead
+  int size = vector.size();
+  FILE *out = fopen(path.c_str(), "w");
+  fprintf(out, "%%%%MatrixMarket vector coordinate real general\n");
+  fprintf(out, "%d\n", size);
+  for (int i = 0; i < size; i++) {
+    fprintf(out, "%d %.17e\n", i + 1, vector(i));
+  }
+  fclose(out);
 }
 
-std::optional<LIS_MATRIX>
-read_lis_matrix_from_mtx(const std::string &path) { // TODO if needed
-  return {};
+std::optional<LIS_MATRIX> read_lis_matrix_from_mtx(const std::string &path) {
+  LIS_MATRIX matrix;
+  lis_matrix_create(LIS_COMM_WORLD, &matrix);
+  LIS_INT result = lis_input_matrix(
+      matrix, const_cast<char *>(path.c_str())); // casting the type lis accepts
+  if (result != LIS_SUCCESS) {
+    return {};
+  }
+  return matrix;
 }
 
-std::optional<LIS_VECTOR>
-read_lis_vector_from_mtx(const std::string &path) { // TODO if needed
-  return {};
+std::optional<LIS_VECTOR> read_lis_vector_from_mtx(const std::string &path) {
+  LIS_VECTOR vector;
+  lis_vector_create(LIS_COMM_WORLD, &vector);
+  LIS_INT result = lis_input_vector(
+      vector, const_cast<char *>(path.c_str())); // casting the type LIS accepts
+  if (result != LIS_SUCCESS) {
+    return {};
+  }
+  return vector;
 }
 
 void write_lis_as_png(LIS_VECTOR v, int width, int height,
@@ -129,11 +152,17 @@ make_convolution_matrix(Eigen::MatrixXd h, int image_width, int image_height) {
   return a;
 }
 
+bool is_symmetric(const Eigen::SparseMatrix<double> &a) {
+  return a.isApprox(a.transpose(), 1e-15);
+}
+
 int main(int argc, char *argv[]) {
   // ==== Misha ==== (tasks 1-3)
   // Read image + print size
   // Add noise + save
   // Reshape + norm
+
+  // TASK 1 Read image + print size
   auto img = read_eigen_from_png("./deer.jpg"); // reading image
 
   if (!img.has_value()) {
@@ -147,6 +176,7 @@ int main(int argc, char *argv[]) {
             << eigen_image.cols() << " with " << eigen_image.size()
             << " elements" << std::endl;
 
+  // TASK 2 Add noise + save
   MatrixXd noisy_eigen_image =
       eigen_image + (MatrixXd::Random(eigen_image.rows(), eigen_image.cols()) *
                      50); // creating noisy image
@@ -155,54 +185,135 @@ int main(int argc, char *argv[]) {
   const std::string output_path = "./output.png";
   const std::string noise_output_path = "./noisy_output.png";
 
-  write_eigen_as_png(eigen_image, output_path);
+  write_eigen_as_png(eigen_image,
+                     output_path); // saving also normal image, optional
   write_eigen_as_png(noisy_eigen_image, noise_output_path);
 
+  // TASK 3 Reshape + norm
   VectorXd v =
       eigen_image.reshaped<Eigen::RowMajor>(); // if you need default remove
                                                // <Eigen::RowMajor>
   VectorXd w = noisy_eigen_image.reshaped<Eigen::RowMajor>(); // same
 
-  std::cout << "Reshaped v rows " << v.rows() << " size " << v.size()
-            << std::endl;
-  std::cout << "Reshaped w rows " << w.rows() << " size " << w.size()
+  std::cout << "Reshaped v has " << v.rows() << " components " << std::endl;
+  std::cout << "Reshaped w has " << w.rows() << " components " << w.size()
             << std::endl;
 
   double norm_v = v.norm();
-  std::cout << "Norm of v " << norm_v << std::endl;
+  std::cout << "Euclidian norm of v " << norm_v << std::endl;
 
+  // BELOW ARE TESTS, REMOVE THEM WHEN YOU DONT NEED
+  // TEST OF WRITING IMAGE AS .PNG AND .MTX
   write_eigen_as_png(w, eigen_image.cols(), eigen_image.rows(),
-                     "./write_eigen.png"); // check if writing is correct
-  write_eigen_as_mtx(w, "write_eigen.mtx");
+                     "./write_eigen.png"); // take vector v, provide dimensions
+                                           // and write in provided path
+  write_eigen_as_mtx(w,
+                     "write_eigen.mtx"); // outputs the mtx file from matrix w
 
+  // ==== Igor ==== (tasks 4-7)
+  // TASK 4
+  std::cout << "Making smoothing matrix A1" << std::endl;
   Eigen::Matrix3d hav1{{1, 1, 1}, {1, 4, 1}, {1, 1, 1}};
   hav1 *= 1.0 / 12.0;
   auto a1 =
       make_convolution_matrix(hav1, eigen_image.cols(), eigen_image.rows());
-  std::cout << "Non zeros: " << a1.nonZeros() << std::endl;
+  std::cout << "Number of non zero elements of A1: " << a1.nonZeros()
+            << std::endl;
+  // TASK 5
+  std::cout << "Applying smoothing filter A1*w" << std::endl;
   auto smooth_w = a1 * w;
   write_eigen_as_png(smooth_w, eigen_image.cols(), eigen_image.rows(),
                      "./smooth_w.png");
-
+  // TASK 6
+  std::cout << "Making sharpening matrix A2" << std::endl;
   Eigen::Matrix3d hsh1{{0, -3, 0}, {-1, 9, -3}, {0, -1, 0}};
   auto a2 =
       make_convolution_matrix(hsh1, eigen_image.cols(), eigen_image.rows());
-  std::cout << "Non zeros: " << a2.nonZeros()
-            << "\nIs simmetric: " << (a2 - a2.transpose()).norm() << std::endl;
+  std::cout << "Number of non zero elements of A2: " << a2.nonZeros()
+            << std::endl;
+  std::cout << "A2 is " << (is_symmetric(a2) ? "" : "not ") << "symmetric"
+            << std::endl;
+
+  // TASK 7
+  std::cout << "Applying sharpening filter A2*v";
   auto sharpened = a2 * v;
 
   write_eigen_as_png(sharpened, eigen_image.cols(), eigen_image.rows(),
                      "./sharpened.png");
 
-  //
-  // ==== Igor ==== (tasks 4-7)
-  // Eigen stuff
-  //
   // ==== Aleandro ==== (tasks 8-9)
   // Lis stuff
   //
-  // ==== Igor ==== (rest)
-  // More Eigen stuff
+  // TESTS WITH LIS
+  lis_initialize(&argc, &argv);
+  // DUMMY SPARSE MATRIX
+  Eigen::SparseMatrix<double> test_A(5, 5);
+  std::vector<Eigen::Triplet<double>> trip;
+  for (int i = 0; i < 5; ++i) {
+    trip.emplace_back(i, i, 2.0);
+    if (i > 0)
+      trip.emplace_back(i, i - 1, -1.0);
+  }
+  test_A.setFromTriplets(trip.begin(), trip.end());
+  // WRITE AS MTX
+  write_eigen_as_mtx(test_A, "test_A.mtx");
+
+  auto lis_A = read_lis_matrix_from_mtx("test_A.mtx");
+  if (!lis_A.has_value()) {
+    std::cerr << "LIS matrix read failed" << std::endl;
+  } else {
+    LIS_INT n, gn;
+    lis_matrix_get_size(lis_A.value(), &n, &gn);
+    std::cout << "LIS matrix size: " << gn << std::endl;
+    lis_matrix_destroy(lis_A.value());
+  }
+
+  // TEST write_eigen_as_mtx + read_lis_vector_from_mtx
+  write_eigen_as_mtx(w, "w_test.mtx");
+
+  auto lis_w = read_lis_vector_from_mtx("w_test.mtx");
+  if (!lis_w.has_value()) {
+    std::cerr << "LIS vector read failed" << std::endl;
+  } else {
+    write_lis_as_png(lis_w.value(), eigen_image.cols(), eigen_image.rows(),
+                     "./write_read_write.png");
+    lis_vector_destroy(lis_w.value());
+  }
+
+  lis_finalize();
+
+  // TASK 10
+  std::cout << "Make edge detection matrix A3" << std::endl;
+  Eigen::Matrix3d hed2{{-1, 0, 1}, {-2, 0, 2}, {-1, 0, 1}};
+  auto a3 =
+      make_convolution_matrix(hed2, eigen_image.cols(), eigen_image.rows());
+
+  std::cout << "A3 is " << (is_symmetric(a3) ? "" : "not ") << "symmetric"
+            << std::endl;
+
+  // TASK 11
+  std::cout << "Performing edge detection A3 * v" << std::endl;
+  auto edge_detected = a3 * v;
+  write_eigen_as_png(edge_detected, eigen_image.cols(), eigen_image.rows(),
+                     "./edge_detected.png");
+
+  // TASK 12
+  std::cout << "Solving (4I + A3)y = w using BiCGSTAB with tolerance 1e-10"
+            << std::endl;
+  Eigen::SparseMatrix<double> identity(a3.rows(), a3.cols());
+  identity.setIdentity();
+  auto a4 = 4.0 * identity + a3;
+
+  Eigen::BiCGSTAB<Eigen::SparseMatrix<double>> solver;
+  solver.compute(a4);
+  solver.setTolerance(1e-10);
+
+  Eigen::VectorXd y(eigen_image.cols() * eigen_image.rows());
+
+  y = solver.solve(w);
+  std::cout << "#iterations:    " << solver.iterations() << std::endl;
+  std::cout << "final residual: " << solver.error() << std::endl;
+  write_eigen_as_png(y, eigen_image.cols(), eigen_image.rows(), "./solved.png");
 
   // --- Eigen demo ---
   /*MatrixXd m = MatrixXd::Random(3, 3);
