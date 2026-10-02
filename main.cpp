@@ -158,9 +158,6 @@ bool is_symmetric(const Eigen::SparseMatrix<double> &a) {
 
 int main(int argc, char *argv[]) {
   // ==== Misha ==== (tasks 1-3)
-  // Read image + print size
-  // Add noise + save
-  // Reshape + norm
 
   // TASK 1 Read image + print size
   auto img = read_eigen_from_png("./deer.jpg"); // reading image
