@@ -7,41 +7,197 @@
 #endif
 #include <Eigen/Dense>
 #include <Eigen/Sparse>
+#include <unsupported/Eigen/SparseExtra>
 #include <iostream>
 #include <optional>
 #include <string>
+#include <algorithm>
+
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include "stb_image_write.h"
+
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
 // Here are all (i think) IO functions needed
 // ==== Misha ====
-std::optional<Eigen::MatrixXd> read_eigen_from_png(std::string path) {
-  return {}; // return null when error
+std::optional<Eigen::MatrixXd> read_eigen_from_png(const std::string& path) {
+
+  int width, height, channels;
+  
+  unsigned char* image_data = stbi_load(path.c_str(), &width, &height, &channels, 1); 
+  if (!image_data) {
+    std::cerr << "Error: Could not load image " << path << std::endl;
+    return {};
+  }
+ 
+  std::cout << "Image loaded: " << width << "x" << height << " with " << channels << " channels." << std::endl;
+  MatrixXd img(height, width);
+
+  for (int i = 0; i < height; i++){
+    for (int j = 0; j < width; j++){
+      int index = (i*width + j);
+      img(i,j) = static_cast<double>(image_data[index]);
+    }  
+  }
+  stbi_image_free(image_data);
+  return img;
+}
+void write_eigen_as_png(const Eigen::MatrixXd& image, const std::string& path) { 
+
+  Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> img(image.rows(), image.cols());
+  img = image.unaryExpr([](double val) -> unsigned char {
+  return static_cast<unsigned char>(std::clamp(val, 0.0, 255.0));//clamp to avoid overflow
+  });
+
+  if (stbi_write_png(path.c_str(), img.cols(), img.rows(), 1, img.data(), img.cols() ) == 0){
+    std::cerr << "Error: Could not save grayscale image" << std::endl;
+    return; 
+
+  }
+  std::cout << "Image saved to " << path << std::endl;
+  }
+
+void write_eigen_as_png(const Eigen::VectorXd& image, int width, int height, const std::string& path) {
+  MatrixXd matrix = image.reshaped<Eigen::RowMajor>(height, width);
+  write_eigen_as_png(matrix, path);
+  }
+
+void write_eigen_as_mtx(const Eigen::SparseMatrix<double>& matrix, const std::string& path) {
+  saveMarket(matrix, path);
 }
 
-void write_eigen_as_png(Eigen::VectorXd image, int width, int height,
-                        std::string path) {}
-
-void write_eigen_as_mpx(Eigen::SparseMatrix<double> matrix, std::string path) {}
-
-void write_eigen_as_mpx(Eigen::VectorXd vector, std::string path) {}
-
-std::optional<LIS_MATRIX> read_lis_matrix_from_mpx(std::string path) {
-  return {};
+void write_eigen_as_mtx(const Eigen::VectorXd& vector, const std::string& path) { 
+  //that was noted in the lab, the matrix mtx format from eigen is not compatible with LIS, so write file manually. sparse matrix save works as it is instead
+  int size = vector.size();
+  FILE* out = fopen(path.c_str(),"w");
+  fprintf(out, "%%%%MatrixMarket vector coordinate real general\n");
+  fprintf(out, "%d\n", size);
+  for(int i = 0; i < size; i++){
+    fprintf(out, "%d %.17e\n",i+1, vector(i));
+  }
+  fclose(out); 
 }
 
-std::optional<LIS_VECTOR> read_lis_vector_from_mpx(std::string path) {
-  return {};
+std::optional<LIS_MATRIX> read_lis_matrix_from_mtx(const std::string& path) {
+  LIS_MATRIX matrix;
+  lis_matrix_create(LIS_COMM_WORLD, &matrix);
+  LIS_INT result = lis_input_matrix(matrix, const_cast<char*>(path.c_str())); //casting the type lis accepts
+  if(result != LIS_SUCCESS){
+    return {};
+  }
+  return matrix;
 }
 
-void write_lis_as_png(LIS_VECTOR v, int width, int height) {}
+std::optional<LIS_VECTOR> read_lis_vector_from_mtx(const std::string& path) {
+  LIS_VECTOR vector;
+  lis_vector_create(LIS_COMM_WORLD, &vector);
+  LIS_INT result = lis_input_vector(vector, const_cast<char*>(path.c_str())); //casting the type LIS accepts
+  if(result != LIS_SUCCESS){
+    return {};
+  }
+  return vector;
+}
+
+void write_lis_as_png(LIS_VECTOR v, int width, int height, const std::string& path) {
+  const int n = width * height;
+  VectorXd vector(n);
+  LIS_INT err = lis_vector_get_values(v, 0, n, vector.data());
+  if (err != LIS_SUCCESS) {
+    std::cerr << "Error: could not read LIS vector values" << std::endl;
+    return;
+  }
+
+  write_eigen_as_png(vector, width, height, path);
+}
 
 int main(int argc, char *argv[]) {
   // ==== Misha ==== (tasks 1-3)
-  // Read image + print size
-  // Add noise + save
-  // Reshape + norm
+
+  //TASK 1 Read image + print size
+  auto img = read_eigen_from_png("./deer.jpg"); //reading image
+
+  if (!img.has_value()) {
+    std::cerr << "load failed" << std::endl;
+    return 1;
+  }
+
+  MatrixXd eigen_image = img.value(); 
+
+  std::cout << "Matrix size = " << eigen_image.rows() << "x" << eigen_image.cols() << " with " << eigen_image.size() << " elements" << std::endl;
+
+
+  //TASK 2 Add noise + save
+  MatrixXd noisy_eigen_image = eigen_image + (MatrixXd::Random(eigen_image.rows(),eigen_image.cols())*50);  //creating noisy image
+  noisy_eigen_image = noisy_eigen_image.cwiseMax(0.0).cwiseMin(255.0); // clamp noise so it doesnt overflow the range
+  const std::string output_path = "./output.png"; 
+  const std::string noise_output_path = "./noisy_output.png";
+
+  write_eigen_as_png(eigen_image, output_path); //saving also normal image, optional 
+  write_eigen_as_png(noisy_eigen_image, noise_output_path);
+
+  //TASK 3 Reshape + norm
+  VectorXd v = eigen_image.reshaped<Eigen::RowMajor>();// if you need default remove <Eigen::RowMajor>
+  VectorXd w = noisy_eigen_image.reshaped<Eigen::RowMajor>(); // same
+
+  std::cout << "Reshaped v has " << v.rows() << " components " << std::endl;
+  std::cout << "Reshaped w has " << w.rows() << " components " << w.size() << std::endl;
+
+  double norm_v = v.norm();
+  std::cout << "Euclidian norm of v " << norm_v << std::endl;
+
+  //BELOW ARE TESTS, REMOVE THEM WHEN YOU DONT NEED
+  //TEST OF WRITING IMAGE AS .PNG AND .MTX
+  write_eigen_as_png(w, eigen_image.cols(), eigen_image.rows(), "./write_eigen.png"); // take vector v, provide dimensions and write in provided path
+  write_eigen_as_mtx(w, "write_eigen.mtx"); // outputs the mtx file from matrix w
+
+  // TESTS WITH LIS
+  lis_initialize(&argc, &argv);
+  //DUMMY SPARSE MATRIX 
+  Eigen::SparseMatrix<double> test_A(5, 5);
+  std::vector<Eigen::Triplet<double>> trip;
+  for (int i = 0; i < 5; ++i) {
+    trip.emplace_back(i, i, 2.0);
+    if (i > 0) trip.emplace_back(i, i - 1, -1.0);
+  }
+  test_A.setFromTriplets(trip.begin(), trip.end());
+  //WRITE AS MTX
+  write_eigen_as_mtx(test_A, "test_A.mtx");
+
+  auto lis_A = read_lis_matrix_from_mtx("test_A.mtx");
+  if (!lis_A.has_value()) {
+    std::cerr << "LIS matrix read failed" << std::endl;
+  } else {
+    LIS_INT n, gn;
+    lis_matrix_get_size(lis_A.value(), &n, &gn);
+    std::cout << "LIS matrix size: " << gn << std::endl;
+    lis_matrix_destroy(lis_A.value()); 
+  }
+
+
+
+
+
+  // TEST write_eigen_as_mtx + read_lis_vector_from_mtx
+  write_eigen_as_mtx(w, "w_test.mtx");
+
+
+  auto lis_w = read_lis_vector_from_mtx("w_test.mtx");
+  if (!lis_w.has_value()) {
+    std::cerr << "LIS vector read failed" << std::endl;
+  } else {
+    write_lis_as_png(lis_w.value(), eigen_image.cols(), eigen_image.rows(),
+                     "./write_read_write.png");
+    lis_vector_destroy(lis_w.value());
+  }
+
+  lis_finalize();
+
+
+
   //
   // ==== Igor ==== (tasks 4-7)
   // Eigen stuff
@@ -53,7 +209,7 @@ int main(int argc, char *argv[]) {
   // More Eigen stuff
 
   // --- Eigen demo ---
-  MatrixXd m = MatrixXd::Random(3, 3);
+  /*MatrixXd m = MatrixXd::Random(3, 3);
   m = (m + MatrixXd::Constant(3, 3, 1.0)) * 10;
   std::cout << "m =" << std::endl << m << std::endl;
   VectorXd v(3);
@@ -95,6 +251,6 @@ int main(int argc, char *argv[]) {
   lis_vector_destroy(b);
   lis_vector_destroy(x);
   lis_finalize();
-
+  */
   return 0;
 }
