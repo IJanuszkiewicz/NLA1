@@ -141,7 +141,7 @@ make_convolution_matrix(Eigen::MatrixXd h, int image_width, int image_height) {
         int img_row = out_row - (h.rows() / 2) + i;
         int img_col = out_col - (h.cols() / 2) + j;
         if (img_row >= image_height || img_row < 0 || img_col >= image_width ||
-            image_col < 0)
+            img_col < 0)
           continue;
         int a_col = img_row * image_width + img_col;
         tripletList.push_back(Eigen::Triplet<double>(row, a_col, h(i, j)));
