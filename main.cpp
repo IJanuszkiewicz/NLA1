@@ -199,13 +199,6 @@ int main(int argc, char *argv[]) {
   double norm_v = v.norm();
   std::cout << "Euclidian norm of v " << norm_v << std::endl;
 
-  // BELOW ARE TESTS, REMOVE THEM WHEN YOU DONT NEED
-  // TEST OF WRITING IMAGE AS .PNG AND .MTX
-  write_eigen_as_png(w, eigen_image.cols(), eigen_image.rows(),
-                     "./write_eigen.png"); // take vector v, provide dimensions
-                                           // and write in provided path
-  write_eigen_as_mtx(w,
-                     "write_eigen.mtx"); // outputs the mtx file from matrix w
 
   // ==== Igor ==== (tasks 4-7)
   // TASK 4
@@ -239,45 +232,44 @@ int main(int argc, char *argv[]) {
                      "./sharpened.png");
 
   // ==== Aleandro ==== (tasks 8-9)
-  // Lis stuff
-  //
-  // TESTS WITH LIS
+  // TASK 8
+  write_eigen_as_mtx(a2, "out/A2.mtx");
+  write_eigen_as_mtx(w, "out/w.mtx");
   lis_initialize(&argc, &argv);
-  // DUMMY SPARSE MATRIX
-  Eigen::SparseMatrix<double> test_A(5, 5);
-  std::vector<Eigen::Triplet<double>> trip;
-  for (int i = 0; i < 5; ++i) {
-    trip.emplace_back(i, i, 2.0);
-    if (i > 0)
-      trip.emplace_back(i, i - 1, -1.0);
-  }
-  test_A.setFromTriplets(trip.begin(), trip.end());
-  // WRITE AS MTX
-  write_eigen_as_mtx(test_A, "test_A.mtx");
-
-  auto lis_A = read_lis_matrix_from_mtx("test_A.mtx");
-  if (!lis_A.has_value()) {
-    std::cerr << "LIS matrix read failed" << std::endl;
-  } else {
-    LIS_INT n, gn;
-    lis_matrix_get_size(lis_A.value(), &n, &gn);
-    std::cout << "LIS matrix size: " << gn << std::endl;
-    lis_matrix_destroy(lis_A.value());
+  auto lis_A = read_lis_matrix_from_mtx("out/A2.mtx");
+  auto lis_b = read_lis_vector_from_mtx("out/w.mtx");
+  if (!lis_A || !lis_b) {
+    std::cerr << "LIS read failed" << std::endl;
+    return 1;
   }
 
-  // TEST write_eigen_as_mtx + read_lis_vector_from_mtx
-  write_eigen_as_mtx(w, "w_test.mtx");
+  LIS_VECTOR lis_x;
+  lis_vector_duplicate(lis_A.value(), &lis_x);
+  lis_vector_set_all(0.0, lis_x);  // initial guess
 
-  auto lis_w = read_lis_vector_from_mtx("w_test.mtx");
-  if (!lis_w.has_value()) {
-    std::cerr << "LIS vector read failed" << std::endl;
-  } else {
-    write_lis_as_png(lis_w.value(), eigen_image.cols(), eigen_image.rows(),
-                     "./write_read_write.png");
-    lis_vector_destroy(lis_w.value());
-  }
+  LIS_SOLVER lis_solver;
+  lis_solver_create(&lis_solver);
+  // A2 isn't symmetric, so we use BiCGSTAB  with a Jacobi preconditioner
+  lis_solver_set_option("-i bicgstab -p jacobi -tol 1e-12 -maxiter 5000", lis_solver);
 
+  lis_solve(lis_A.value(), lis_b.value(), lis_x, lis_solver);
+
+  LIS_INT iters;
+  double resid;
+  lis_solver_get_iter(lis_solver, &iters);
+  lis_solver_get_residualnorm(lis_solver, &resid);
+  std::cout << "LIS iterations: " << iters << std::endl;
+  std::cout << "LIS final residual: " << resid << std::endl;
+
+  // TASK 9: save solution as png
+  write_lis_as_png(lis_x, eigen_image.cols(), eigen_image.rows(), "out/lis_solution.png");
+
+  lis_solver_destroy(lis_solver);
+  lis_matrix_destroy(lis_A.value());
+  lis_vector_destroy(lis_b.value());
+  lis_vector_destroy(lis_x);
   lis_finalize();
+
 
   // TASK 10
   std::cout << "Make edge detection matrix A3" << std::endl;
@@ -355,6 +347,60 @@ int main(int argc, char *argv[]) {
   lis_vector_destroy(b);
   lis_vector_destroy(x);
   lis_finalize();
+
+
+
+
+
+  // TESTS WITH LIS
+  lis_initialize(&argc, &argv);
+  // DUMMY SPARSE MATRIX
+  Eigen::SparseMatrix<double> test_A(5, 5);
+  std::vector<Eigen::Triplet<double>> trip;
+  for (int i = 0; i < 5; ++i) {
+    trip.emplace_back(i, i, 2.0);
+    if (i > 0)
+      trip.emplace_back(i, i - 1, -1.0);
+  }
+  test_A.setFromTriplets(trip.begin(), trip.end());
+  // WRITE AS MTX
+  write_eigen_as_mtx(test_A, "test_A.mtx");
+
+  auto lis_A = read_lis_matrix_from_mtx("test_A.mtx");
+  if (!lis_A.has_value()) {
+    std::cerr << "LIS matrix read failed" << std::endl;
+  } else {
+    LIS_INT n, gn;
+    lis_matrix_get_size(lis_A.value(), &n, &gn);
+    std::cout << "LIS matrix size: " << gn << std::endl;
+    lis_matrix_destroy(lis_A.value());
+  }
+
+  // TEST write_eigen_as_mtx + read_lis_vector_from_mtx
+  write_eigen_as_mtx(w, "w_test.mtx");
+
+  auto lis_w = read_lis_vector_from_mtx("w_test.mtx");
+  if (!lis_w.has_value()) {
+    std::cerr << "LIS vector read failed" << std::endl;
+  } else {
+    write_lis_as_png(lis_w.value(), eigen_image.cols(), eigen_image.rows(),
+                     "./write_read_write.png");
+    lis_vector_destroy(lis_w.value());
+  }
+
+  lis_finalize();
+
+
+
+
+
+  // BELOW ARE TESTS, REMOVE THEM WHEN YOU DONT NEED
+  // TEST OF WRITING IMAGE AS .PNG AND .MTX
+  write_eigen_as_png(w, eigen_image.cols(), eigen_image.rows(),
+                     "./write_eigen.png"); // take vector v, provide dimensions
+                                           // and write in provided path
+  write_eigen_as_mtx(w,
+                     "write_eigen.mtx"); // outputs the mtx file from matrix w
   */
   return 0;
 }
