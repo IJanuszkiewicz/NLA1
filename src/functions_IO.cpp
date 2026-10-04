@@ -14,11 +14,11 @@
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
-// creates missing parent directories of path (e.g. outputs/task2/)
+// creates missing directories
 static void make_parent_dirs(const std::string &path) {
   std::filesystem::path dir = std::filesystem::path(path).parent_path();
   if (!dir.empty()) {
-    std::error_code ec; // on failure the following write reports the error
+    std::error_code ec;
     std::filesystem::create_directories(dir, ec);
   }
 }
@@ -31,12 +31,12 @@ std::optional<Eigen::MatrixXd> read_eigen_from_png(const std::string &path) {
   unsigned char *image_data =
       stbi_load(path.c_str(), &width, &height, &channels, 1);
   if (!image_data) {
-    std::cerr << "Error: Could not load image " << path << std::endl;
+    std::cerr << "Error: could not load image " << path << std::endl;
     return {};
   }
 
-  std::cout << "Image loaded: " << width << "x" << height << " with "
-            << channels << " channels." << std::endl;
+  // channels is the file's original count, the data is forced to grayscale
+  std::cout << "Image loaded: " << path << " (" << width << "x" << height << ", grayscale)" << std::endl;
   MatrixXd img(height, width);
 
   for (int i = 0; i < height; i++) {
@@ -53,17 +53,16 @@ void write_eigen_as_png(const Eigen::MatrixXd &image, const std::string &path) {
   Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
       img(image.rows(), image.cols());
   img = image.unaryExpr([](double val) -> unsigned char {
-    return static_cast<unsigned char>(
-        std::clamp(val, 0.0, 255.0)); // clamp to avoid overflow
+    return static_cast<unsigned char>(std::clamp(val, 0.0, 255.0)); // clamp to avoid overflow
   });
 
   make_parent_dirs(path);
   if (stbi_write_png(path.c_str(), img.cols(), img.rows(), 1, img.data(),
                      img.cols()) == 0) {
-    std::cerr << "Error: Could not save grayscale image" << std::endl;
+    std::cerr << "Error: could not save image " << path << std::endl;
     return;
   }
-  std::cout << "Image saved to " << path << std::endl;
+  std::cout << "Image saved: " << path << std::endl;
 }
 
 void write_eigen_as_png(const Eigen::VectorXd &image, int width, int height,
@@ -75,11 +74,14 @@ void write_eigen_as_png(const Eigen::VectorXd &image, int width, int height,
 void write_eigen_as_mtx(const Eigen::SparseMatrix<double> &matrix,
                         const std::string &path) {
   make_parent_dirs(path);
-  saveMarket(matrix, path);
+  if (!saveMarket(matrix, path)) {
+    std::cerr << "Error: could not save matrix " << path << std::endl;
+    return;
+  }
+  std::cout << "Matrix saved: " << path << std::endl;
 }
 
-void write_eigen_as_mtx(const Eigen::VectorXd &vector,
-                        const std::string &path) {
+void write_eigen_as_mtx(const Eigen::VectorXd &vector, const std::string &path) {
   // that was noted in the lab, the matrix mtx format from eigen is not
   // compatible with LIS, so write file manually. sparse matrix save works as it
   // is instead
@@ -96,6 +98,7 @@ void write_eigen_as_mtx(const Eigen::VectorXd &vector,
     fprintf(out, "%d %.17e\n", i + 1, vector(i));
   }
   fclose(out);
+  std::cout << "Vector saved: " << path << std::endl;
 }
 
 std::optional<LIS_MATRIX> read_lis_matrix_from_mtx(const std::string &path) {
@@ -104,6 +107,7 @@ std::optional<LIS_MATRIX> read_lis_matrix_from_mtx(const std::string &path) {
   LIS_INT result = lis_input_matrix(
       matrix, const_cast<char *>(path.c_str())); // casting the type lis accepts
   if (result != LIS_SUCCESS) {
+    std::cerr << "Error: could not read LIS matrix " << path << std::endl;
     return {};
   }
   return matrix;

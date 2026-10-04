@@ -6,7 +6,7 @@ main: src/main.cpp src/functions_IO.cpp src/functions_IO.hpp
 	$(CXX) $(CXXFLAGS) src/main.cpp src/functions_IO.cpp -o $@ $(LDLIBS)
 
 run: main
-	./main
+	HWLOC_HIDE_ERRORS=2 ./main
 
 clean:
 	rm -rf main outputs
