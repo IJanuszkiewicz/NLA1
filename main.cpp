@@ -15,9 +15,9 @@
 #include <unsupported/Eigen/SparseExtra>
 
 #define STB_IMAGE_IMPLEMENTATION
-#include "stb_image.h"
+#include "libs/stb_image.h"
 #define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "stb_image_write.h"
+#include "libs/stb_image_write.h"
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
@@ -179,12 +179,9 @@ int main(int argc, char *argv[]) {
                      50); // creating noisy image
   noisy_eigen_image = noisy_eigen_image.cwiseMax(0.0).cwiseMin(
       255.0); // clamp noise so it doesnt overflow the range
-  const std::string output_path = "./output.png";
-  const std::string noise_output_path = "./noisy_output.png";
 
-  write_eigen_as_png(eigen_image,
-                     output_path); // saving also normal image, optional
-  write_eigen_as_png(noisy_eigen_image, noise_output_path);
+  write_eigen_as_png(eigen_image, "outputs/task2/normal_output.png"); // saving also normal image, optional
+  write_eigen_as_png(noisy_eigen_image, "outputs/task2/noisy_output.png");
 
   // TASK 3 Reshape + norm
   VectorXd v =
@@ -213,7 +210,7 @@ int main(int argc, char *argv[]) {
   std::cout << "Applying smoothing filter A1*w" << std::endl;
   auto smooth_w = a1 * w;
   write_eigen_as_png(smooth_w, eigen_image.cols(), eigen_image.rows(),
-                     "./smooth_w.png");
+                     "outputs/task5/smooth_w.png");
   // TASK 6
   std::cout << "Making sharpening matrix A2" << std::endl;
   Eigen::Matrix3d hsh1{{0, -3, 0}, {-1, 9, -3}, {0, -1, 0}};
@@ -229,15 +226,15 @@ int main(int argc, char *argv[]) {
   auto sharpened = a2 * v;
 
   write_eigen_as_png(sharpened, eigen_image.cols(), eigen_image.rows(),
-                     "./sharpened.png");
+                     "outputs/task7/sharpened.png");
 
   // ==== Aleandro ==== (tasks 8-9)
   // TASK 8
-  write_eigen_as_mtx(a2, "out/A2.mtx");
-  write_eigen_as_mtx(w, "out/w.mtx");
+  write_eigen_as_mtx(a2, "outputs/task8/A2.mtx");
+  write_eigen_as_mtx(w, "outputs/task8/w.mtx");
   lis_initialize(&argc, &argv);
-  auto lis_A = read_lis_matrix_from_mtx("out/A2.mtx");
-  auto lis_b = read_lis_vector_from_mtx("out/w.mtx");
+  auto lis_A = read_lis_matrix_from_mtx("outputs/task8/A2.mtx");
+  auto lis_b = read_lis_vector_from_mtx("outputs/task8/w.mtx");
   if (!lis_A || !lis_b) {
     std::cerr << "LIS read failed" << std::endl;
     return 1;
@@ -262,7 +259,7 @@ int main(int argc, char *argv[]) {
   std::cout << "LIS final residual: " << resid << std::endl;
 
   // TASK 9: save solution as png
-  write_lis_as_png(lis_x, eigen_image.cols(), eigen_image.rows(), "out/lis_solution.png");
+  write_lis_as_png(lis_x, eigen_image.cols(), eigen_image.rows(), "outputs/task9/lis_solution.png");
 
   lis_solver_destroy(lis_solver);
   lis_matrix_destroy(lis_A.value());
@@ -284,7 +281,7 @@ int main(int argc, char *argv[]) {
   std::cout << "Performing edge detection A3 * v" << std::endl;
   auto edge_detected = a3 * v;
   write_eigen_as_png(edge_detected, eigen_image.cols(), eigen_image.rows(),
-                     "./edge_detected.png");
+                     "outputs/task11/edge_detected.png");
 
   // TASK 12
   std::cout << "Solving (4I + A3)y = w using BiCGSTAB with tolerance 1e-10"
@@ -302,7 +299,7 @@ int main(int argc, char *argv[]) {
   y = solver.solve(w);
   std::cout << "#iterations:    " << solver.iterations() << std::endl;
   std::cout << "final residual: " << solver.error() << std::endl;
-  write_eigen_as_png(y, eigen_image.cols(), eigen_image.rows(), "./solved.png");
+  write_eigen_as_png(y, eigen_image.cols(), eigen_image.rows(), "outputs/task12/solved.png");
 
   // --- Eigen demo ---
   /*MatrixXd m = MatrixXd::Random(3, 3);
