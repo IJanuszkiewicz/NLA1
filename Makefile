@@ -2,10 +2,13 @@ CXX      = mpicxx
 CXXFLAGS = -DUSE_MPI -DMPICH_SKIP_MPICXX -DOMPI_SKIP_MPICXX -I${mkEigenInc} -I${mkLisInc}
 LDLIBS   = -L${mkLisLib} -llis
 
-main: main.cpp
-	$(CXX) $(CXXFLAGS) main.cpp -o $@ $(LDLIBS)
+main: src/main.cpp src/functions_IO.cpp src/functions_IO.hpp
+	$(CXX) $(CXXFLAGS) src/main.cpp src/functions_IO.cpp -o $@ $(LDLIBS)
+
+run: main
+	./main
 
 clean:
-	rm -f main
+	rm -rf main outputs
 
-.PHONY: clean
+.PHONY: run clean

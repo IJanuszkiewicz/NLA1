@@ -1,130 +1,10 @@
-#include "lis.h"
-// lis.h defines a function-like macro `conj(x)` (as `x` in the
-// non-complex build), which collides with std::conj and Eigen::numext::conj.
-// LIS does not use it in its headers, so drop it here.
-#ifdef conj
-#undef conj
-#endif
-#include <Eigen/Dense>
+#include "functions_IO.hpp"
 #include <Eigen/IterativeLinearSolvers>
-#include <Eigen/Sparse>
-#include <algorithm>
 #include <iostream>
-#include <optional>
-#include <string>
-#include <unsupported/Eigen/SparseExtra>
-
-#define STB_IMAGE_IMPLEMENTATION
-#include "libs/stb_image.h"
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "libs/stb_image_write.h"
+#include <vector>
 
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
-
-// Here are all (i think) IO functions needed
-// ==== Misha ====
-std::optional<Eigen::MatrixXd> read_eigen_from_png(const std::string &path) {
-
-  int width, height, channels;
-
-  unsigned char *image_data =
-      stbi_load(path.c_str(), &width, &height, &channels, 1);
-  if (!image_data) {
-    std::cerr << "Error: Could not load image " << path << std::endl;
-    return {};
-  }
-
-  std::cout << "Image loaded: " << width << "x" << height << " with "
-            << channels << " channels." << std::endl;
-  MatrixXd img(height, width);
-
-  for (int i = 0; i < height; i++) {
-    for (int j = 0; j < width; j++) {
-      int index = (i * width + j);
-      img(i, j) = static_cast<double>(image_data[index]);
-    }
-  }
-  stbi_image_free(image_data);
-  return img;
-}
-void write_eigen_as_png(const Eigen::MatrixXd &image, const std::string &path) {
-
-  Eigen::Matrix<unsigned char, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
-      img(image.rows(), image.cols());
-  img = image.unaryExpr([](double val) -> unsigned char {
-    return static_cast<unsigned char>(
-        std::clamp(val, 0.0, 255.0)); // clamp to avoid overflow
-  });
-
-  if (stbi_write_png(path.c_str(), img.cols(), img.rows(), 1, img.data(),
-                     img.cols()) == 0) {
-    std::cerr << "Error: Could not save grayscale image" << std::endl;
-    return;
-  }
-  std::cout << "Image saved to " << path << std::endl;
-}
-
-void write_eigen_as_png(const Eigen::VectorXd &image, int width, int height,
-                        const std::string &path) {
-  MatrixXd matrix = image.reshaped<Eigen::RowMajor>(height, width);
-  write_eigen_as_png(matrix, path);
-}
-
-void write_eigen_as_mtx(const Eigen::SparseMatrix<double> &matrix,
-                        const std::string &path) {
-  saveMarket(matrix, path);
-}
-
-void write_eigen_as_mtx(const Eigen::VectorXd &vector,
-                        const std::string &path) {
-  // that was noted in the lab, the matrix mtx format from eigen is not
-  // compatible with LIS, so write file manually. sparse matrix save works as it
-  // is instead
-  int size = vector.size();
-  FILE *out = fopen(path.c_str(), "w");
-  fprintf(out, "%%%%MatrixMarket vector coordinate real general\n");
-  fprintf(out, "%d\n", size);
-  for (int i = 0; i < size; i++) {
-    fprintf(out, "%d %.17e\n", i + 1, vector(i));
-  }
-  fclose(out);
-}
-
-std::optional<LIS_MATRIX> read_lis_matrix_from_mtx(const std::string &path) {
-  LIS_MATRIX matrix;
-  lis_matrix_create(LIS_COMM_WORLD, &matrix);
-  LIS_INT result = lis_input_matrix(
-      matrix, const_cast<char *>(path.c_str())); // casting the type lis accepts
-  if (result != LIS_SUCCESS) {
-    return {};
-  }
-  return matrix;
-}
-
-std::optional<LIS_VECTOR> read_lis_vector_from_mtx(const std::string &path) {
-  LIS_VECTOR vector;
-  lis_vector_create(LIS_COMM_WORLD, &vector);
-  LIS_INT result = lis_input_vector(
-      vector, const_cast<char *>(path.c_str())); // casting the type LIS accepts
-  if (result != LIS_SUCCESS) {
-    return {};
-  }
-  return vector;
-}
-
-void write_lis_as_png(LIS_VECTOR v, int width, int height,
-                      const std::string &path) {
-  const int n = width * height;
-  VectorXd vector(n);
-  LIS_INT err = lis_vector_get_values(v, 0, n, vector.data());
-  if (err != LIS_SUCCESS) {
-    std::cerr << "Error: could not read LIS vector values" << std::endl;
-    return;
-  }
-
-  write_eigen_as_png(vector, width, height, path);
-}
 
 Eigen::SparseMatrix<double>
 make_convolution_matrix(Eigen::MatrixXd h, int image_width, int image_height) {
@@ -160,7 +40,8 @@ int main(int argc, char *argv[]) {
   // ==== Misha ==== (tasks 1-3)
 
   // TASK 1 Read image + print size
-  auto img = read_eigen_from_png("./deer.jpg"); // reading image
+  std::cout << "\nTASK 1:" << std::endl;
+  auto img = read_eigen_from_png("src/deer.jpg"); // reading image
 
   if (!img.has_value()) {
     std::cerr << "load failed" << std::endl;
@@ -174,6 +55,7 @@ int main(int argc, char *argv[]) {
             << " elements" << std::endl;
 
   // TASK 2 Add noise + save
+  std::cout << "\nTASK 2:" << std::endl;
   MatrixXd noisy_eigen_image =
       eigen_image + (MatrixXd::Random(eigen_image.rows(), eigen_image.cols()) *
                      50); // creating noisy image
@@ -184,6 +66,7 @@ int main(int argc, char *argv[]) {
   write_eigen_as_png(noisy_eigen_image, "outputs/task2/noisy_output.png");
 
   // TASK 3 Reshape + norm
+  std::cout << "\nTASK 3:" << std::endl;
   VectorXd v =
       eigen_image.reshaped<Eigen::RowMajor>(); // if you need default remove
                                                // <Eigen::RowMajor>
@@ -199,6 +82,7 @@ int main(int argc, char *argv[]) {
 
   // ==== Igor ==== (tasks 4-7)
   // TASK 4
+  std::cout << "\nTASK 4:" << std::endl;
   std::cout << "Making smoothing matrix A1" << std::endl;
   Eigen::Matrix3d hav1{{1, 1, 1}, {1, 4, 1}, {1, 1, 1}};
   hav1 *= 1.0 / 12.0;
@@ -207,11 +91,13 @@ int main(int argc, char *argv[]) {
   std::cout << "Number of non zero elements of A1: " << a1.nonZeros()
             << std::endl;
   // TASK 5
+  std::cout << "\nTASK 5:" << std::endl;
   std::cout << "Applying smoothing filter A1*w" << std::endl;
   auto smooth_w = a1 * w;
   write_eigen_as_png(smooth_w, eigen_image.cols(), eigen_image.rows(),
                      "outputs/task5/smooth_w.png");
   // TASK 6
+  std::cout << "\nTASK 6:" << std::endl;
   std::cout << "Making sharpening matrix A2" << std::endl;
   Eigen::Matrix3d hsh1{{0, -3, 0}, {-1, 9, -3}, {0, -1, 0}};
   auto a2 =
@@ -222,7 +108,8 @@ int main(int argc, char *argv[]) {
             << std::endl;
 
   // TASK 7
-  std::cout << "Applying sharpening filter A2*v";
+  std::cout << "\nTASK 7:" << std::endl;
+  std::cout << "Applying sharpening filter A2*v" << std::endl;
   auto sharpened = a2 * v;
 
   write_eigen_as_png(sharpened, eigen_image.cols(), eigen_image.rows(),
@@ -230,6 +117,7 @@ int main(int argc, char *argv[]) {
 
   // ==== Aleandro ==== (tasks 8-9)
   // TASK 8
+  std::cout << "\nTASK 8:" << std::endl;
   write_eigen_as_mtx(a2, "outputs/task8/A2.mtx");
   write_eigen_as_mtx(w, "outputs/task8/w.mtx");
   lis_initialize(&argc, &argv);
@@ -259,6 +147,7 @@ int main(int argc, char *argv[]) {
   std::cout << "LIS final residual: " << resid << std::endl;
 
   // TASK 9: save solution as png
+  std::cout << "\nTASK 9:" << std::endl;
   write_lis_as_png(lis_x, eigen_image.cols(), eigen_image.rows(), "outputs/task9/lis_solution.png");
 
   lis_solver_destroy(lis_solver);
@@ -269,6 +158,7 @@ int main(int argc, char *argv[]) {
 
 
   // TASK 10
+  std::cout << "\nTASK 10:" << std::endl;
   std::cout << "Make edge detection matrix A3" << std::endl;
   Eigen::Matrix3d hed2{{-1, 0, 1}, {-2, 0, 2}, {-1, 0, 1}};
   auto a3 =
@@ -278,12 +168,14 @@ int main(int argc, char *argv[]) {
             << std::endl;
 
   // TASK 11
+  std::cout << "\nTASK 11:" << std::endl;
   std::cout << "Performing edge detection A3 * v" << std::endl;
   auto edge_detected = a3 * v;
   write_eigen_as_png(edge_detected, eigen_image.cols(), eigen_image.rows(),
                      "outputs/task11/edge_detected.png");
 
   // TASK 12
+  std::cout << "\nTASK 12:" << std::endl;
   std::cout << "Solving (4I + A3)y = w using BiCGSTAB with tolerance 1e-10"
             << std::endl;
   Eigen::SparseMatrix<double> identity(a3.rows(), a3.cols());
