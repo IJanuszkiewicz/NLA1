@@ -6,8 +6,10 @@
 using Eigen::MatrixXd;
 using Eigen::VectorXd;
 
-Eigen::SparseMatrix<double> make_convolution_matrix(Eigen::MatrixXd h, int image_width, int image_height) {
-  Eigen::SparseMatrix<double> a(image_width * image_height, image_width * image_height);
+Eigen::SparseMatrix<double>
+make_convolution_matrix(Eigen::MatrixXd h, int image_width, int image_height) {
+  Eigen::SparseMatrix<double> a(image_width * image_height,
+                                image_width * image_height);
 
   std::vector<Eigen::Triplet<double>> tripletList;
   tripletList.reserve(h.rows() * h.cols() * image_width);
@@ -16,6 +18,9 @@ Eigen::SparseMatrix<double> make_convolution_matrix(Eigen::MatrixXd h, int image
     int out_col = row % image_width;
     for (int i = 0; i < h.rows(); i++) {
       for (int j = 0; j < h.cols(); j++) {
+        if (h(i, j) == 0.0) {
+          continue;
+        }
         int img_row = out_row - (h.rows() / 2) + i;
         int img_col = out_col - (h.cols() / 2) + j;
         if (img_row >= image_height || img_row < 0 || img_col >= image_width ||
@@ -55,10 +60,15 @@ int main(int argc, char *argv[]) {
 
   // TASK 2 Add noise + save
   std::cout << "\nTASK 2:" << std::endl;
-  MatrixXd noisy_eigen_image = eigen_image + (MatrixXd::Random(eigen_image.rows(), eigen_image.cols()) * 50); // creating noisy image
-  noisy_eigen_image = noisy_eigen_image.cwiseMax(0.0).cwiseMin(255.0); // clamp noise so it doesnt overflow the range
+  MatrixXd noisy_eigen_image =
+      eigen_image + (MatrixXd::Random(eigen_image.rows(), eigen_image.cols()) *
+                     50); // creating noisy image
+  noisy_eigen_image = noisy_eigen_image.cwiseMax(0.0).cwiseMin(
+      255.0); // clamp noise so it doesnt overflow the range
 
-  write_eigen_as_png(eigen_image, "outputs/task2/normal_output.png"); // saving also normal image, optional
+  write_eigen_as_png(
+      eigen_image,
+      "outputs/task2/normal_output.png"); // saving also normal image, optional
   write_eigen_as_png(noisy_eigen_image, "outputs/task2/noisy_output.png");
 
   // TASK 3 Reshape + norm
@@ -66,12 +76,13 @@ int main(int argc, char *argv[]) {
   VectorXd v = eigen_image.reshaped<Eigen::RowMajor>();
   VectorXd w = noisy_eigen_image.reshaped<Eigen::RowMajor>();
 
-  std::cout << "Reshaped v: " << v.size() << " components (m*n = "  << eigen_image.size() << ")" << std::endl;
-  std::cout << "Reshaped w: " << w.size() << " components (m*n = " << eigen_image.size() << ")" << std::endl;
+  std::cout << "Reshaped v: " << v.size()
+            << " components (m*n = " << eigen_image.size() << ")" << std::endl;
+  std::cout << "Reshaped w: " << w.size()
+            << " components (m*n = " << eigen_image.size() << ")" << std::endl;
 
   double norm_v = v.norm();
   std::cout << "Euclidean norm of v: " << norm_v << std::endl;
-
 
   // ==== Igor ==== (tasks 4-7)
   // TASK 4
@@ -79,37 +90,44 @@ int main(int argc, char *argv[]) {
   std::cout << "Building smoothing matrix A1" << std::endl;
   Eigen::Matrix3d hav1{{1, 1, 1}, {1, 4, 1}, {1, 1, 1}};
   hav1 *= 1.0 / 12.0;
-  auto a1 = make_convolution_matrix(hav1, eigen_image.cols(), eigen_image.rows());
+  auto a1 =
+      make_convolution_matrix(hav1, eigen_image.cols(), eigen_image.rows());
   std::cout << "A1 non-zeros: " << a1.nonZeros() << std::endl;
-  std::cout << "A1 symmetric: " << (is_symmetric(a1) ? "yes" : "no") << std::endl;
+  std::cout << "A1 symmetric: " << (is_symmetric(a1) ? "yes" : "no")
+            << std::endl;
 
   // TASK 5
   std::cout << "\nTASK 5:" << std::endl;
   std::cout << "Applying smoothing filter A1*w" << std::endl;
   auto smooth_w = a1 * w;
-  write_eigen_as_png(smooth_w, eigen_image.cols(), eigen_image.rows(), "outputs/task5/smooth_w.png");
+  write_eigen_as_png(smooth_w, eigen_image.cols(), eigen_image.rows(),
+                     "outputs/task5/smooth_w.png");
 
   // TASK 6
   std::cout << "\nTASK 6:" << std::endl;
   std::cout << "Building sharpening matrix A2" << std::endl;
   Eigen::Matrix3d hsh1{{0, -3, 0}, {-1, 9, -3}, {0, -1, 0}};
-  auto a2 = make_convolution_matrix(hsh1, eigen_image.cols(), eigen_image.rows());
+  auto a2 =
+      make_convolution_matrix(hsh1, eigen_image.cols(), eigen_image.rows());
   std::cout << "A2 non-zeros: " << a2.nonZeros() << std::endl;
-  std::cout << "A2 symmetric: " << (is_symmetric(a2) ? "yes" : "no") << std::endl;
+  std::cout << "A2 symmetric: " << (is_symmetric(a2) ? "yes" : "no")
+            << std::endl;
 
   // TASK 7
   std::cout << "\nTASK 7:" << std::endl;
   std::cout << "Applying sharpening filter A2*v" << std::endl;
   auto sharpened = a2 * v;
 
-  write_eigen_as_png(sharpened, eigen_image.cols(), eigen_image.rows(), "outputs/task7/sharpened.png");
+  write_eigen_as_png(sharpened, eigen_image.cols(), eigen_image.rows(),
+                     "outputs/task7/sharpened.png");
 
   // ==== Aleandro ==== (tasks 8-9)
   // TASK 8
   std::cout << "\nTASK 8:" << std::endl;
   write_eigen_as_mtx(a2, "outputs/task8/A2.mtx");
   write_eigen_as_mtx(w, "outputs/task8/w.mtx");
-  std::cout << "Solving A2 x = w with LIS: BiCGSTAB + ILU, tolerance 1e-12" << std::endl;
+  std::cout << "Solving A2 x = w with LIS: BiCGSTAB + ILU, tolerance 1e-12"
+            << std::endl;
   lis_initialize(&argc, &argv);
   auto lis_A = read_lis_matrix_from_mtx("outputs/task8/A2.mtx");
   auto lis_b = read_lis_vector_from_mtx("outputs/task8/w.mtx");
@@ -119,7 +137,7 @@ int main(int argc, char *argv[]) {
 
   LIS_VECTOR lis_x;
   lis_vector_duplicate(lis_A.value(), &lis_x);
-  lis_vector_set_all(0.0, lis_x);  // initial guess
+  lis_vector_set_all(0.0, lis_x); // initial guess
 
   LIS_SOLVER lis_solver;
   lis_solver_create(&lis_solver);
@@ -138,7 +156,8 @@ int main(int argc, char *argv[]) {
   // TASK 9
   std::cout << "\nTASK 9:" << std::endl;
   std::cout << "Converting LIS solution x to png" << std::endl;
-  write_lis_as_png(lis_x, eigen_image.cols(), eigen_image.rows(), "outputs/task9/lis_solution.png");
+  write_lis_as_png(lis_x, eigen_image.cols(), eigen_image.rows(),
+                   "outputs/task9/lis_solution.png");
 
   lis_solver_destroy(lis_solver);
   lis_matrix_destroy(lis_A.value());
@@ -146,24 +165,27 @@ int main(int argc, char *argv[]) {
   lis_vector_destroy(lis_x);
   lis_finalize();
 
-
   // TASK 10
   std::cout << "\nTASK 10:" << std::endl;
   std::cout << "Building edge detection matrix A3" << std::endl;
   Eigen::Matrix3d hed2{{-1, 0, 1}, {-2, 0, 2}, {-1, 0, 1}};
-  auto a3 = make_convolution_matrix(hed2, eigen_image.cols(), eigen_image.rows());
+  auto a3 =
+      make_convolution_matrix(hed2, eigen_image.cols(), eigen_image.rows());
   std::cout << "A3 non-zeros: " << a3.nonZeros() << std::endl;
-  std::cout << "A3 symmetric: " << (is_symmetric(a3) ? "yes" : "no") << std::endl;
+  std::cout << "A3 symmetric: " << (is_symmetric(a3) ? "yes" : "no")
+            << std::endl;
 
   // TASK 11
   std::cout << "\nTASK 11:" << std::endl;
   std::cout << "Applying edge detection filter A3*v" << std::endl;
   auto edge_detected = a3 * v;
-  write_eigen_as_png(edge_detected, eigen_image.cols(), eigen_image.rows(), "outputs/task11/edge_detected.png");
+  write_eigen_as_png(edge_detected, eigen_image.cols(), eigen_image.rows(),
+                     "outputs/task11/edge_detected.png");
 
   // TASK 12
   std::cout << "\nTASK 12:" << std::endl;
-  std::cout << "Solving (4I + A3) y = w with Eigen: BiCGSTAB, tolerance 1e-10" << std::endl;
+  std::cout << "Solving (4I + A3) y = w with Eigen: BiCGSTAB, tolerance 1e-10"
+            << std::endl;
   Eigen::SparseMatrix<double> identity(a3.rows(), a3.cols());
   identity.setIdentity();
   auto a4 = 4.0 * identity + a3;
@@ -176,9 +198,10 @@ int main(int argc, char *argv[]) {
 
   y = solver.solve(w);
   std::cout << "Iterations: " << solver.iterations() << std::endl;
-  std::cout << "Final residual: " << solver.error() << " (tolerance 1e-10)" << std::endl;
-  write_eigen_as_png(y, eigen_image.cols(), eigen_image.rows(), "outputs/task12/solved.png");
-
+  std::cout << "Final residual: " << solver.error() << " (tolerance 1e-10)"
+            << std::endl;
+  write_eigen_as_png(y, eigen_image.cols(), eigen_image.rows(),
+                     "outputs/task12/solved.png");
 
   return 0;
 }
