@@ -2,6 +2,7 @@
 *.out
 a.out
 main
+proj2
 *.png
 *.mtx
 !deer.jpg
