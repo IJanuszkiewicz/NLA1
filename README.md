@@ -16,6 +16,12 @@ To run
 make run
 ```
 
+To compile and run the second project
+```bash
+make proj2
+make run-proj2
+```
+
 To clean
 ```bash
 make clean
@@ -28,6 +34,7 @@ make clean
 .
 ├── src/
 │   ├── main.cpp
+│   ├── proj2.cpp           # second project entry point
 │   ├── functions_IO.cpp    # input/output helpers
 │   ├── functions_IO.hpp
 │   ├── tests.cpp           # scratch code, not compiled
@@ -39,6 +46,7 @@ make clean
 ```
 
 - `src/main.cpp`: runs the tasks one after the other and prints the results.
+- `src/proj2.cpp`: entry point for the second project.
 - `src/functions_IO.cpp` / `.hpp`: reading and writing images (png), Matrix
   Market files (mtx) and LIS matrices/vectors.
 - `src/tests.cpp`: tests, demos and code from the labs, kept only as a
