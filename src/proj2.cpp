@@ -1,7 +1,13 @@
 #include "functions_IO.hpp"
-#include <Eigen/Dense>
-#include <Eigen/SVD>
+#include <Eigen/IterativeLinearSolvers>
+#include <Eigen/Eigenvalues>
 #include <iostream>
+
+using Eigen::MatrixXd;
+using Eigen::SparseMatrix;
+using Eigen::VectorXd;
+using Eigen::SelfAdjointEigenSolver;
+
 
 // TASK 8: build a black and white checkerboard image
 Eigen::MatrixXd make_checkerboard(int n) {
@@ -64,18 +70,71 @@ void save_compressed(const Eigen::MatrixXd &c, const Eigen::MatrixXd &d, int k,
       compressed.rows(), compressed.cols(), path);
 }
 
-int main(int argc, char *argv[]) {
-  std::cout.precision(10);
 
+
+
+
+
+int main(int argc, char *argv[]) {
+
+  // ==== Aleandro ==== (tasks 1-4)
+  // TASK 1
+  std::cout << std::endl << "TASK 1" << std::endl;
+  auto img = read_eigen_from_png("src/deer.jpg");
+  if (!img.has_value()) {
+    return 1;
+  }
+  MatrixXd A = img.value();
+  std::cout << "A: " << A.rows() << " x " << A.cols()
+            << ", min: " << A.minCoeff() << ", max: " << A.maxCoeff() << std::endl;
+  MatrixXd ATA = A.transpose() * A;
+  std::cout << "Frobenius norm of A^T * A: " << ATA.norm() << std::endl;
+  // NORM: 1.2105e+09
+
+  // TASK 2
+  std::cout << std::endl << "TASK 2" << std::endl;
+  SelfAdjointEigenSolver<MatrixXd> eigensolver(ATA);
+  if (eigensolver.info() != Eigen::Success) abort();
+  std::cout << "The two largest singular value of A are:" << std::endl;
+  std::cout << "1: " << std::sqrt(eigensolver.eigenvalues().tail(2)(1)) << std::endl;
+  std::cout << "2: " << std::sqrt(eigensolver.eigenvalues().tail(2)(0)) << std::endl;
+  // EIGENVALUES: 1.20029e+09, 1.12864e+08
+  // SINGULAR VALUES: 34645.1, 10623.8
+
+  // TASK 3
+  std::cout << std::endl << "TASK 3" << std::endl;
+  SparseMatrix<double> ATA_sparse = ATA.sparseView();
+  write_eigen_as_mtx(ATA_sparse, "lis2.1.17_test/ATA.mtx");
+  // Move into lis2.1.17_test
+  // COMPILE: mpicc -DUSE_MPI -I${mkLisInc} -L${mkLisLib} -llis etest1.c -o eigen1
+  // RUN: mpirun -n 1 ./eigen1 ATA.mtx eigvec.txt hist.txt -e pi -etol 1e-10
+  // RESULT: 1.200286e+09 ==> The result is coherent with the previous point
+  // NOTE: It takes 10 iterations
+
+  // TASK 4
+  // Since A^T * A is SPD, all eigenvalues except lambda_1 are in [0, lambda_2].
+  // Shifting by mu = lambda_2 / 2 moves them into [-mu, mu]
+  // So the method converges with ratio (lambda_2 / 2) / (lambda_1 - (lambda_2 / 2)) ~ 0.049
+  // instead of lambda_2 / lambda_1 ~ 0.094.
+  // mu = lambda_2 / 2 ~ 5.6e7
+  //
+  // Move into lis2.1.17_test
+  // RUN: mpirun -n 1 ./eigen1 ATA.mtx eigvec.txt hist.txt -e pi -etol 1e-10 -shift 5.6e7
+  // RESULT: The number of iterations is now 9
+
+
+
+
+  // ==== Igor ==== (tasks 8-12)
   // TASK 8 Build the checkerboard and report its Euclidean norm
-  std::cout << "\nTASK 8:" << std::endl;
+  std::cout << "\nTASK 8" << std::endl;
   std::cout << "Building a 400x400 black and white checkerboard" << std::endl;
   auto checkerboard = make_checkerboard(400);
   std::cout << "Euclidean norm of the checkerboard: " << checkerboard.norm()
             << std::endl;
 
   // TASK 9 Add noise in [-60, 60] and save the noisy image
-  std::cout << "\nTASK 9:" << std::endl;
+  std::cout << "\nTASK 9" << std::endl;
   std::cout << "Adding random noise in [-60, 60] to each pixel" << std::endl;
   auto noisy_checkerboard = with_noise(checkerboard, 60);
   write_eigen_as_png(noisy_checkerboard.reshaped(noisy_checkerboard.rows() *
@@ -85,7 +144,7 @@ int main(int argc, char *argv[]) {
                      "outputs/proj2/task9/noisy.png");
 
   // TASK 10 SVD of the noisy image, report the two largest singular values
-  std::cout << "\nTASK 10:" << std::endl;
+  std::cout << "\nTASK 10" << std::endl;
   std::cout << "Computing the SVD of the noisy checkerboard" << std::endl;
   Eigen::JacobiSVD<Eigen::MatrixXd, Eigen::NoQRPreconditioner> svd(
       noisy_checkerboard, Eigen::ComputeThinU | Eigen::ComputeThinV);
@@ -93,18 +152,19 @@ int main(int argc, char *argv[]) {
             << svd.singularValues()(Eigen::seq(0, 1)) << std::endl;
 
   // TASK 11 Build C and D and report their size
-  std::cout << "\nTASK 11:" << std::endl;
+  std::cout << "\nTASK 11" << std::endl;
   std::cout << "Building the truncation matrices C and D (k = 6 and k = 12)"
             << std::endl;
   auto [c6, d6] = make_cd(svd, 6);
   auto [c12, d12] = make_cd(svd, 12);
 
   // TASK 12 Build the compressed images and save them
-  std::cout << "\nTASK 12:" << std::endl;
+  std::cout << "\nTASK 12" << std::endl;
   std::cout << "Computing the compressed images C D^T (k = 6 and k = 12)"
             << std::endl;
   save_compressed(c6, d6, 6, "outputs/proj2/task12/compressed6.png");
   save_compressed(c12, d12, 12, "outputs/proj2/task12/compressed12.png");
+
 
   return 0;
 }
