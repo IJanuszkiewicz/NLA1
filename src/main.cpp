@@ -141,7 +141,7 @@ int main(int argc, char *argv[]) {
 
   LIS_SOLVER lis_solver;
   lis_solver_create(&lis_solver);
-  char opts[] = "-i bicgstab -p ilu -tol 1e-12 -maxiter 5000";
+  char opts[] = "-i bicgstab -p ilu -tol 1e-12 -maxiter 5000-i bicgstab -p ilu -tol 1e-12 -maxiter 5000";
   lis_solver_set_option(opts, lis_solver);
 
   lis_solve(lis_A.value(), lis_b.value(), lis_x, lis_solver);
