@@ -38,7 +38,7 @@ Eigen::MatrixXd with_noise(const Eigen::MatrixXd &mat, double scale) {
   return noisy;
 }
 
-// TASKS 11-12: split the SVD A ~ C D^T keeping the k largest singular triplets
+// TASKS 6, 11-12: split the SVD A ~ C D^T keeping the k largest singular triplets
 template <typename Derived>
 std::tuple<Eigen::MatrixXd, Eigen::MatrixXd>
 make_cd(const Eigen::SVDBase<Derived> &svd, int k, bool task6 = false) {
@@ -162,14 +162,9 @@ int main(int argc, char *argv[]) {
   std::cout << "\nTASK 9" << std::endl;
   std::cout << "Adding random noise in [-60, 60] to each pixel" << std::endl;
   auto noisy_checkerboard = with_noise(checkerboard, 60);
-  /*write_eigen_as_png(noisy_checkerboard.reshaped(noisy_checkerboard.rows() *
-                                                     noisy_checkerboard.cols(),
-                                                 1),
-                     noisy_checkerboard.rows(), noisy_checkerboard.cols(),
-                     "outputs/proj2/task9/noisy.png");
-  */
+  
   write_eigen_as_png(noisy_checkerboard,
-     "outputs/proj2/task9/noisy.png"); // changed here, i think there was inconsistency with row/column major same as in save_compressed, which is not visible because of symmetry
+     "outputs/proj2/task9/noisy.png"); 
 
   // TASK 10 SVD of the noisy image, report the two largest singular values
   std::cout << "\nTASK 10" << std::endl;
@@ -193,6 +188,5 @@ int main(int argc, char *argv[]) {
   save_compressed(c6, d6, 6, "outputs/proj2/task12/compressed6.png");
   save_compressed(c12, d12, 12, "outputs/proj2/task12/compressed12.png");
 
- // Should TASK 13 be here or is there some space in the form to comment?
   return 0;
 }
