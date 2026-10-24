@@ -2,6 +2,7 @@
 #include <Eigen/IterativeLinearSolvers>
 #include <Eigen/Eigenvalues>
 #include <iostream>
+#include <Eigen/SVD>
 
 using Eigen::MatrixXd;
 using Eigen::SparseMatrix;
@@ -25,7 +26,7 @@ Eigen::MatrixXd make_checkerboard(int n) {
     }
   }
 
-  auto mat = v1 * v1.transpose() + v2 * v2.transpose();
+  auto mat = v1 * v2.transpose() + v2 * v1.transpose();
   return mat * 255;
 }
 
@@ -40,7 +41,7 @@ Eigen::MatrixXd with_noise(const Eigen::MatrixXd &mat, double scale) {
 // TASKS 11-12: split the SVD A ~ C D^T keeping the k largest singular triplets
 template <typename Derived>
 std::tuple<Eigen::MatrixXd, Eigen::MatrixXd>
-make_cd(const Eigen::SVDBase<Derived> &svd, int k) {
+make_cd(const Eigen::SVDBase<Derived> &svd, int k, bool task6 = false) {
   const auto &U = svd.matrixU();        // n x m (thin) or n x n (full)
   const auto &s = svd.singularValues(); // m = min(n, p), sorted descending
   const auto &V = svd.matrixV();        // p x m (thin) or p x p (full)
@@ -50,24 +51,30 @@ make_cd(const Eigen::SVDBase<Derived> &svd, int k) {
   Eigen::MatrixXd C = U.leftCols(k);
   Eigen::MatrixXd Dt = s.head(k).asDiagonal() * V.leftCols(k).transpose();
 
-  // Report the size of c and d
   std::cout << "For k = " << k << std::endl;
-  std::cout << "size of C: " << C.rows() << "x" << C.cols() << std::endl;
-  std::cout << "size of D: " << Dt.transpose().rows() << "x"
+  if(task6){
+    // Report the number of non zero values for task6
+    std::cout << "Number of nonzero entries in C " << (C.array() != 0.0).count() << "\n"; 
+    std::cout << "Number of nonzero entries in D " << (Dt.array() != 0.0).count() << "\n"; //nnz of Dt = nnz of D
+
+  } else {
+    // Report the size of c and d (for task 11)
+    std::cout << "size of C: " << C.rows() << "x" << C.cols() << std::endl;
+    std::cout << "size of D: " << Dt.transpose().rows() << "x"
             << Dt.transpose().cols() << std::endl;
+  }
+  
 
   return {C, Dt.transpose()};
 }
 
-// TASK 12: build the compressed image C D^T and save it
+// TASKS 7 and 12: build the compressed image C D^T and save it
 void save_compressed(const Eigen::MatrixXd &c, const Eigen::MatrixXd &d, int k,
                      const std::string &path) {
 
   Eigen::MatrixXd compressed = c * d.transpose();
-
   write_eigen_as_png(
-      compressed.reshaped(compressed.rows() * compressed.cols(), 1),
-      compressed.rows(), compressed.cols(), path);
+      compressed, path);
 }
 
 
@@ -122,8 +129,26 @@ int main(int argc, char *argv[]) {
   // RUN: mpirun -n 1 ./eigen1 ATA.mtx eigvec.txt hist.txt -e pi -etol 1e-10 -shift 5.6e7
   // RESULT: The number of iterations is now 9
 
+  // ==== Misha ==== (tasks 5-7)
+  // TASK 5  SVD of A and report the Euclidean norm of sigma
+  std::cout << "\nTASK 5" << std::endl;
+  Eigen::BDCSVD<Eigen::MatrixXd> bdc_svd(A, Eigen::ComputeThinU | Eigen::ComputeThinV);
+  VectorXd sigma = bdc_svd.singularValues();
+  double sigma_norm = sigma.norm();
+  std::cout << "Euclidian norm of diagonal matrix of singular values Sigma: " << sigma_norm << "\n";
+  
+  // TASK 6 Compute the matrices C and D described in (1) assuming k = 30 and k = 90. Report the
+  //number of nonzero entries in the matrices C and D.
+  std::cout << "\nTASK 6" << std::endl;
+  auto [c30, d30] = make_cd(bdc_svd, 30, true);
+  auto [c90, d90] = make_cd(bdc_svd, 90, true);
 
-
+  // TASK 7
+  std::cout << "\nTASK 7" << std::endl;
+  std::cout << "Computing the compressed images C D^T (k = 30 and k = 90)"
+            << std::endl;
+  save_compressed(c30, d30, 30, "outputs/proj2/task7/deer_compressed30.png");
+  save_compressed(c90, d90, 90, "outputs/proj2/task7/deer_compressed90.png");
 
   // ==== Igor ==== (tasks 8-12)
   // TASK 8 Build the checkerboard and report its Euclidean norm
@@ -137,11 +162,14 @@ int main(int argc, char *argv[]) {
   std::cout << "\nTASK 9" << std::endl;
   std::cout << "Adding random noise in [-60, 60] to each pixel" << std::endl;
   auto noisy_checkerboard = with_noise(checkerboard, 60);
-  write_eigen_as_png(noisy_checkerboard.reshaped(noisy_checkerboard.rows() *
+  /*write_eigen_as_png(noisy_checkerboard.reshaped(noisy_checkerboard.rows() *
                                                      noisy_checkerboard.cols(),
                                                  1),
                      noisy_checkerboard.rows(), noisy_checkerboard.cols(),
                      "outputs/proj2/task9/noisy.png");
+  */
+  write_eigen_as_png(noisy_checkerboard,
+     "outputs/proj2/task9/noisy.png"); // changed here, i think there was inconsistency with row/column major same as in save_compressed, which is not visible because of symmetry
 
   // TASK 10 SVD of the noisy image, report the two largest singular values
   std::cout << "\nTASK 10" << std::endl;
@@ -165,6 +193,6 @@ int main(int argc, char *argv[]) {
   save_compressed(c6, d6, 6, "outputs/proj2/task12/compressed6.png");
   save_compressed(c12, d12, 12, "outputs/proj2/task12/compressed12.png");
 
-
+ // Should TASK 13 be here or is there some space in the form to comment?
   return 0;
 }
